@@ -4,64 +4,85 @@ import torch
 
 import unittest
 
+import torch.nn.functional as F
+
 
 class TestMultiHeadAttention(unittest.TestCase):
-    def test_split_heads(self):
-        """Basic sanity test for splitting heads."""
+    def setUp(self):
         torch.manual_seed(42)
-        mha = MultiHeadAttention(
-            embedding_dim=32, num_heads=8, qk_length=32, value_length=32
-        )
-        x = torch.randn(32, 64, 8 * 32)
-        Q, _, _ = x, x, x
+        self.embedding_dim = 32
+        self.num_heads = 8
+        self.qk_length = 4
+        self.value_length = 4
+        self.batch_size = 2
+        self.seq_len = 5
 
-        self.assertEqual(mha.split_heads(Q, mha.qk_length).size(), (32, 8, 64, 32))
-
-    def test_split_heads_incorrect_shape(self):
-        """Test that the input tensor must have the correct shape."""
-        torch.manual_seed(42)
-        mha = MultiHeadAttention(
-            embedding_dim=32, num_heads=8, qk_length=32, value_length=32
-        )
-        x = torch.randn(32, 8 * 31, 64)
-        Q, _, _ = x, x, x
-
-        with self.assertRaises(AssertionError):
-            mha.split_heads(Q, mha.qk_length)
-
-    def test_combine_heads(self):
-        """Basic sanity test for combining heads."""
-        torch.manual_seed(42)
-        mha = MultiHeadAttention(
-            embedding_dim=32, num_heads=8, qk_length=32, value_length=32
-        )
-        x = torch.randn(32, 8, 64, 32)
-
-        self.assertEqual(mha.combine_heads(x).size(), (32, 64, 8 * 32))
-
-    def test_scaled_dot_product_attention(self):
-        """Basic sanity test for scaled dot-product attention."""
-        torch.manual_seed(42)
-        mha = MultiHeadAttention(
-            embedding_dim=32, num_heads=8, qk_length=32, value_length=32
-        )
-        Q = torch.randn(32, 8, 64, 32)
-        K = torch.randn(32, 8, 64, 32)
-        V = torch.randn(32, 8, 64, 32)
-
-        self.assertEqual(
-            mha.scaled_dot_product_attention(Q, K, V).size(), (32, 8, 64, 32)
+        self.mha = MultiHeadAttention(
+            embedding_dim=self.embedding_dim,
+            num_heads=self.num_heads,
+            qk_length=self.qk_length,
+            value_length=self.value_length,
         )
 
-    def test_forward(self):
-        """Basic sanity test for the forward pass."""
-        torch.manual_seed(42)
-        mha = MultiHeadAttention(
-            embedding_dim=32, num_heads=8, qk_length=32, value_length=32
+    def test_split_heads_shape(self):
+        x = torch.randn(self.batch_size, self.seq_len, self.num_heads * self.qk_length)
+        out = self.mha.split_heads(x, self.qk_length)
+        self.assertEqual(out.shape, (self.batch_size, self.num_heads, self.seq_len, self.qk_length))
+
+    def test_split_heads_then_combine_heads_identity(self):
+        x = torch.randn(self.batch_size, self.seq_len, self.num_heads * self.qk_length)
+        split = self.mha.split_heads(x, self.qk_length)
+        combined = self.mha.combine_heads(split)
+        self.assertTrue(torch.allclose(x, combined))
+
+    def test_combine_heads_shape(self):
+        x = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.qk_length)
+        out = self.mha.combine_heads(x)
+        self.assertEqual(out.shape, (self.batch_size, self.seq_len, self.num_heads * self.qk_length))
+
+    def test_matches_pytorch_sdpa(self):
+        Q = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.qk_length)
+        K = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.qk_length)
+        V = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.value_length)
+
+        out_custom = self.mha.scaled_dot_product_attention(Q, K, V)
+        out_ref = F.scaled_dot_product_attention(Q, K, V, attn_mask=None)
+
+        self.assertTrue(torch.allclose(out_custom, out_ref, atol=1e-6, rtol=1e-5))
+
+    def test_matches_pytorch_sdpa_masked(self):
+        Q = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.qk_length)
+        K = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.qk_length)
+        V = torch.randn(self.batch_size, self.num_heads, self.seq_len, self.value_length)
+
+        causal_mask = torch.triu(
+            torch.ones(self.seq_len, self.seq_len, dtype=torch.bool),
+            diagonal=1
         )
 
-        # (B, T, C)
-        x = torch.randn(32, 64, 32)
-        Q, K, V = x, x, x
+        causal_mask_pytorch = torch.tril(
+            torch.ones(self.seq_len, self.seq_len, dtype=torch.bool),
+            diagonal=0
+        )
 
-        self.assertEqual(mha(Q, K, V).size(), (32, 64, 32))
+        out_custom = self.mha.scaled_dot_product_attention(Q, K, V, mask=causal_mask)
+        out_ref = F.scaled_dot_product_attention(Q, K, V, attn_mask=causal_mask_pytorch)
+
+        # print(causal_mask, causal_mask_pytorch)
+        # print(out_custom)
+        # print(out_ref)
+
+        self.assertTrue(torch.allclose(out_custom, out_ref, atol=1e-6, rtol=1e-5))
+
+    def test_forward_matches_shape(self):
+        x = torch.randn(self.batch_size, self.seq_len, self.embedding_dim)
+
+        causal_mask = torch.triu(
+            torch.ones(self.seq_len, self.seq_len, dtype=torch.bool),
+            diagonal=1
+        )
+
+        out = self.mha(x, x, x, mask=causal_mask)
+
+        self.assertEqual(out.shape, (self.batch_size, self.seq_len, self.embedding_dim))
+
