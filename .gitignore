@@ -8,3 +8,5 @@ ckpts
 *.egg-info
 *.pt
 europarl/
+.venv/
+data/nmt/

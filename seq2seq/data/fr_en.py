@@ -9,7 +9,6 @@ from seq2seq.tokenizer.bpe_tokenizer import BPETokenizer
 
 tokenizer = BPETokenizer()
 
-
 class FrEnDataset(Dataset):
     def __init__(self, fr_en_path: Path):
         with open(fr_en_path / "europarl-v7.fr-en.fr", "r") as f:
