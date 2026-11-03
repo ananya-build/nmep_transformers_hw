@@ -8,7 +8,14 @@ from seq2seq.data.fr_en import tokenizer
 
 def decode(model, src_sentence, max_len=100, device="cpu", mode="top_p"):
     model.eval()
-    src_tensor = tokenizer.encode(src_sentence).to(device)
+    # wrap the source in BOS/EOS the same way FrEnDataset does during training
+    src_tensor = torch.cat(
+        [
+            torch.tensor([tokenizer.bos_token_id]),
+            tokenizer.encode(src_sentence),
+            torch.tensor([tokenizer.eos_token_id]),
+        ]
+    ).to(device)
 
     tgt_tokens = [tokenizer.bos_token_id]
 
