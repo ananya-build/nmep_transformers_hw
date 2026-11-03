@@ -1,3 +1,5 @@
+import random
+
 from tqdm import tqdm
 import wandb
 
@@ -62,10 +64,21 @@ def save_checkpoint(epoch: int, model, optimizer, scheduler, latest=True):
 
 def train_nmt():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
     data_path = Path("data/nmt/europarl/")
     dataset = FrEnDataset(data_path)
-    dataloader = DataLoader(dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+
+    # group sentences of similar length into the same batch so there is less padding
+    batch_size = 256
+    lengths = [len(fr) + len(en) for fr, en in zip(dataset.fr_lines, dataset.en_lines)]
+    order = sorted(range(len(lengths)), key=lengths.__getitem__)
+    batches = [order[i : i + batch_size] for i in range(0, len(order), batch_size)]
+    random.shuffle(batches)
+    dataloader = DataLoader(
+        dataset, batch_sampler=batches, collate_fn=collate_fn, num_workers=8, persistent_workers=True
+    )
 
     vocab_size = len(tokenizer.vocab)
     num_layers = 6
@@ -76,10 +89,10 @@ def train_nmt():
     value_length = embedding_dim // num_heads # standard practice
     max_length = 200
     dropout = 0.1
-    epochs = 1
+    epochs = 2
 
     warmup_steps = 4000
-    base_lr = 5e-5
+    base_lr = 5e-4
 
     def lr_lambda(step):
         if step == 0:
@@ -116,6 +129,7 @@ def train_nmt():
         for i, (src, tgt) in enumerate(data_tqdm):
             try:
                 src, tgt = src.to(device), tgt.to(device)
+                src, tgt = src[:, :max_length], tgt[:, : max_length + 1]
 
                 tgt_input = tgt[:, :-1]
 
@@ -125,10 +139,11 @@ def train_nmt():
 
                 optimizer.zero_grad()
 
-                output = model(src, tgt_input)
-
-                loss = criterion(output.reshape(-1, vocab_size), tgt_output.reshape(-1))
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    output = model(src, tgt_input)
+                    loss = criterion(output.reshape(-1, vocab_size).float(), tgt_output.reshape(-1))
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
 
@@ -145,6 +160,8 @@ def train_nmt():
 
         avg_loss = total_loss / len(dataloader)
         print(f"Epoch {epoch + 1}: Loss - {avg_loss}")
+
+    save_checkpoint(epochs - 1, model, optimizer, scheduler)
 
     model.eval()
     test_sentences = [

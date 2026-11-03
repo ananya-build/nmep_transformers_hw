@@ -34,27 +34,27 @@ class Transformer(nn.Module):
         self.device = device
 
         self.encoder = Encoder(
-            vocab_size,
-            num_layers,
-            num_heads,
-            ffn_hidden_dim,
-            embedding_dim,
-            qk_length,
-            value_length,
-            max_length,
-            dropout,
+            vocab_size=vocab_size,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            embedding_dim=embedding_dim,
+            ffn_hidden_dim=ffn_hidden_dim,
+            qk_length=qk_length,
+            value_length=value_length,
+            max_length=max_length,
+            dropout=dropout,
         )
 
         self.decoder = Decoder(
-            vocab_size,
-            num_layers,
-            num_heads,
-            ffn_hidden_dim,
-            embedding_dim,
-            qk_length,
-            value_length,
-            max_length,
-            dropout,
+            vocab_size=vocab_size,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            embedding_dim=embedding_dim,
+            ffn_hidden_dim=ffn_hidden_dim,
+            qk_length=qk_length,
+            value_length=value_length,
+            max_length=max_length,
+            dropout=dropout,
         )
 
     def make_pad_mask(self, q: torch.Tensor, k: torch.Tensor):

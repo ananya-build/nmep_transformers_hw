@@ -75,13 +75,15 @@ def make_no_peak_mask(q, k, device=0):
 
 def train_lm():
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
 
     block_size = 512  # each sample has a fixed length of block_size input tokens
-    batch_size = 16
+    batch_size = 64
 
     data_path = Path("data/lm/")
     dataset = ScreenplayDataset(data_path, block_size)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn, num_workers=4)
 
     vocab_size = len(tokenizer.vocab)
     num_layers = 6
@@ -94,8 +96,8 @@ def train_lm():
     dropout = 0.1
     epochs = 100
 
-    warmup_steps = 4000
-    base_lr = 3e-4
+    warmup_steps = 1000
+    base_lr = 6e-4
 
     def lr_lambda(step):
         if step == 0:
@@ -143,11 +145,12 @@ def train_lm():
 
                 trg_mask = trg_pad_mask | trg_no_peak_mask
 
-                output = model(batch_input, tgt_mask=trg_mask)
+                with torch.autocast("cuda", dtype=torch.bfloat16):
+                    output = model(batch_input, tgt_mask=trg_mask)
 
-                loss = criterion(
-                    output.reshape(-1, vocab_size), batch_output.reshape(-1)
-                )
+                    loss = criterion(
+                        output.reshape(-1, vocab_size).float(), batch_output.reshape(-1)
+                    )
 
                 loss.backward()
                 norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # gradient clipping
@@ -183,6 +186,8 @@ def train_lm():
 
         if (epoch + 1) % 25 == 0:
             save_checkpoint(epoch, model, optimizer, scheduler, latest=False)
+
+    save_checkpoint(epochs - 1, model, optimizer, scheduler)
 
 
 if __name__ == "__main__":

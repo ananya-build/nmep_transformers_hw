@@ -36,7 +36,7 @@ class MultiHeadAttention(nn.Module):
 
         self.linearq = nn.Linear(embedding_dim, num_heads * qk_length)  
         self.lineark = nn.Linear(embedding_dim, num_heads * qk_length) 
-        self.linearv = nn.Linear(embedding_dim, num_heads * qk_length)
+        self.linearv = nn.Linear(embedding_dim, num_heads * value_length)
         self.lfinal = nn.Linear(num_heads * value_length, embedding_dim)
 
     def split_heads(self, x: torch.Tensor, vec_length: int) -> torch.Tensor:
@@ -103,9 +103,9 @@ class MultiHeadAttention(nn.Module):
         scores = (Q @ torch.transpose(K, 3, 2)) / (self.qk_length ** 0.5)
         
         if mask is not None: 
-            torch.tensor.masked_fill(mask, scores)
+            scores = scores.masked_fill(mask, float("-inf"))
             
-        return torch.nn.functional.softmax(scores, dim = 1) @ V
+        return torch.nn.functional.softmax(scores, dim = -1) @ V
 
     def forward(
         self,
@@ -128,12 +128,12 @@ class MultiHeadAttention(nn.Module):
         """
         
         v = self.linearv(V)
-        k = self.linearv(K)
-        q = self.linearv(Q)
+        k = self.lineark(K)
+        q = self.linearq(Q)
         
-        v = self.split_heads(v, v.size(2) // self.num_heads) 
-        k = self.split_heads(k, k.size(2) // self.num_heads)
-        q = self.split_heads(q, q.size(2) // self.num_heads)
+        v = self.split_heads(v, self.value_length) 
+        k = self.split_heads(k, self.qk_length)
+        q = self.split_heads(q, self.qk_length)
         
         out = self.scaled_dot_product_attention(q, k, v, mask)
         out = self.combine_heads(out)

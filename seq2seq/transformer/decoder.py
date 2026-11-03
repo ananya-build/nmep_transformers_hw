@@ -1,3 +1,5 @@
+import math
+
 import torch
 import torch.nn as nn
 from typing import Optional
@@ -45,7 +47,10 @@ class DecoderLayer(nn.Module):
         self.qk_length = qk_length
         self.value_length = value_length
         
-        self.ln = nn.LayerNorm(embedding_dim)
+        self.ln1 = nn.LayerNorm(embedding_dim)
+        self.ln2 = nn.LayerNorm(embedding_dim)
+        self.ln3 = nn.LayerNorm(embedding_dim)
+        self.dropout = nn.Dropout(dropout)
         self.mha = MultiHeadAttention(num_heads, embedding_dim, qk_length, value_length)
         self.cross = MultiHeadAttention(num_heads, embedding_dim, qk_length, value_length)
         self.ffn = FeedForwardNN(embedding_dim, ffn_hidden_dim) 
@@ -61,12 +66,10 @@ class DecoderLayer(nn.Module):
         """
         The forward pass of the DecoderLayer.
         """
-        x = self.ln(x + self.mha(x, x, x)) 
+        x = self.ln1(x + self.dropout(self.mha(x, x, x, tgt_mask))) 
         if enc_x is not None: 
-            x = self.ln(x + self.cross(x, enc_x, enc_x))
-        x = self.ln(x + self.ffn(x))
-        if tgt_mask is not None: 
-            x = torch.tensor.masked_fill(tgt_mask, x)
+            x = self.ln2(x + self.dropout(self.cross(x, enc_x, enc_x, src_mask)))
+        x = self.ln3(x + self.dropout(self.ffn(x)))
         return x 
 
 class Decoder(nn.Module):
@@ -125,7 +128,8 @@ class Decoder(nn.Module):
                                                   qk_length,
                                                   value_length,
                                                   dropout) for i in range(num_layers)])
-        self.pe = PositionalEncoding(32) 
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.pe = PositionalEncoding(embedding_dim, dropout) 
         self.lfinal = nn.Linear(embedding_dim, vocab_size)
 
     def forward(
@@ -138,10 +142,9 @@ class Decoder(nn.Module):
         """
         The forward pass of the Decoder.
         """
-        embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
-        x = embedding(x)
+        x = self.embedding(x) * math.sqrt(self.embedding_dim)
         x = self.pe(x) 
         for m in self.layers: 
-            x = m(x, enc_x, tgt_mask) 
+            x = m(x, enc_x, tgt_mask, src_mask) 
         x = self.lfinal(x)
         return x

@@ -23,11 +23,11 @@ class CharacterTokenizer(Tokenizer):
         # we will use a fixed set of characters that we know will be present in the dataset.
         self.characters = """aàâæbcçdeéèêëfghiîïjklmnoôœpqrstuùûüvwxyÿz0123456789,;.!?:'\"/\\|_@#$%^&*~`+-=<>()[]{}’•–í€óá«»… º◦©ö°äµ—ø­·òãñ―½¼γ®⇒²▪−√¥£¤ß´úª¾є™，ﬁõ  �►□′″¨³‑¯≈ˆ§‰●ﬂ⇑➘①②„≤±†✜✔➪✖◗¢ไทยếệεληνικαåşıруский 한국어汉语ž¹¿šćþ‚‛─÷〈¸⎯×←→∑δ■ʹ‐≥τ;∆℡ƒð¬¡¦βϕ▼⁄ρσ⋅≡∂≠π⎛⎜⎞ω∗"""
 
-        if verbose:
-            print("Vocabulary:", self.vocab)
-
         for i in range(len(self.characters)):
             self.vocab[self.characters[i]] = i
+
+        if verbose:
+            print("Vocabulary:", self.vocab)
 
     def encode(self, text: str) -> torch.Tensor:
         

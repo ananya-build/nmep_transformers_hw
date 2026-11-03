@@ -77,7 +77,9 @@ class EncoderLayer(nn.Module):
         self.qk_length = qk_length
         self.value_length = value_length
         
-        self.ln = nn.LayerNorm(embedding_dim)
+        self.ln1 = nn.LayerNorm(embedding_dim)
+        self.ln2 = nn.LayerNorm(embedding_dim)
+        self.dropout = nn.Dropout(dropout)
         self.mha = MultiHeadAttention(num_heads, embedding_dim, qk_length, value_length)
         self.ffn = FeedForwardNN(embedding_dim, ffn_hidden_dim) 
         
@@ -87,10 +89,8 @@ class EncoderLayer(nn.Module):
         """
         The forward pass of the EncoderLayer.
         """
-        x = self.ln(x + self.mha(x, x, x)) 
-        x = self.ln(x + self.ffn(x))
-        if mask is not None: 
-            x = torch.tensor.masked_fill(mask, x)
+        x = self.ln1(x + self.dropout(self.mha(x, x, x, mask))) 
+        x = self.ln2(x + self.dropout(self.ffn(x)))
         return x 
 
 class Encoder(nn.Module):
@@ -150,16 +150,16 @@ class Encoder(nn.Module):
                                                   qk_length,
                                                   value_length,
                                                   dropout) for i in range(num_layers)])
-        self.pe = PositionalEncoding(32) 
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.pe = PositionalEncoding(embedding_dim, dropout) 
 
     def forward(self, x: torch.Tensor, src_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         The forward pass of the Encoder.
         """
-        embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
-        x = embedding(x)
+        x = self.embedding(x) * math.sqrt(self.embedding_dim)
         x = self.pe(x) 
         for m in self.layers: 
-            x = m(x) 
+            x = m(x, src_mask) 
         return x
 
