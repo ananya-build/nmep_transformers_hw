@@ -118,7 +118,7 @@ def train_lm():
     ).to(device)
 
     # TODO: loss shouldn't include pad tokens, so it should ignore pad token ids
-    criterion = nn.CrossEntropyLoss(ignore_index=...)
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.AdamW(model.parameters(), lr=base_lr, betas=[0.9, 0.98], eps=1e-9)
     scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -134,7 +134,7 @@ def train_lm():
                 batch = batch.to(device)
 
                 batch_input = batch[:, :-1]
-                batch_output = ...  # TODO: same idea from train_nmt.py
+                batch_output = batch[:, 1:]
 
                 optimizer.zero_grad()
 

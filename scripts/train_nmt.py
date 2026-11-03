@@ -104,7 +104,7 @@ def train_nmt():
     ).to(device)
 
     # TODO: loss shouldn't include pad tokens, so it should ignore pad token ids
-    criterion = nn.CrossEntropyLoss(ignore_index=...)
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.AdamW(model.parameters(), lr=base_lr, betas=[0.9, 0.98], eps=1e-9)
     scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
@@ -121,7 +121,7 @@ def train_nmt():
 
                 # TODO: if the input is up to the second-last token,
                 # what should the output be?
-                tgt_output = ...
+                tgt_output = tgt[:, 1:]
 
                 optimizer.zero_grad()
 
